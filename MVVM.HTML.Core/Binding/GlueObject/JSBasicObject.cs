@@ -8,6 +8,10 @@ namespace MVVM.HTML.Core.HTMLBinding
 {
     internal class JSBasicObject : IJSCSGlue
     {
+        public IJavascriptObject JSValue { get; private set; }
+        public object CValue { get; private set; }
+        public JSCSGlueType Type { get { return JSCSGlueType.Basic; } }
+
         internal JSBasicObject(IJavascriptObject value, object icValue)
         {
             JSValue = value;
@@ -39,12 +43,6 @@ namespace MVVM.HTML.Core.HTMLBinding
         {
             sb.Append(this);
         }
-
-        public IJavascriptObject JSValue { get; private set; }
-
-        public object CValue { get; private set; }
-
-        public JSCSGlueType Type { get { return JSCSGlueType.Basic; } }
 
         public IEnumerable<IJSCSGlue> GetChildren()
         {

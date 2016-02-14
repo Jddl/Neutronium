@@ -76,6 +76,7 @@
     <Compile Include="Binding\GlueObject\IJSCommandFactory.cs" />
     <Compile Include="Binding\Extension\IJavascriptToCSharpConverterExtension.cs" />
     <Compile Include="Binding\Listeners\FullListenerRegister.cs" />
+    <Compile Include="Binding\Listeners\IListener.cs" />
     <Compile Include="Binding\Listeners\IVisitable.cs" />
     <Compile Include="Binding\Listeners\IListenableObjectVisitor.cs" />
     <Compile Include="Binding\Listeners\ListenableVisitor.cs" />

@@ -3,15 +3,17 @@ using System.Linq;
 using System.Text;
 using MVVM.HTML.Core.Infra;
 using MVVM.HTML.Core.JavascriptEngine.JavascriptObject;
+using MVVM.HTML.Core.Binding.Listeners;
+using System.ComponentModel;
+using System;
 
 namespace MVVM.HTML.Core.HTMLBinding
 {
-    public class JSGenericObject : GlueBase, IJSObservableBridge
+    public class JSGenericObject : GlueBase, IJSObservableBridge, IListener
     {
         private readonly IWebView _WebView;
         private IJavascriptObject _MappedJSValue;
         private readonly Dictionary<string, IJSCSGlue> _Attributes = new Dictionary<string, IJSCSGlue>();
-        private readonly IDictionary<string, IJavascriptObject> _Silenters = new Dictionary<string, IJavascriptObject>();
 
         public IReadOnlyDictionary<string, IJSCSGlue> Attributes { get { return _Attributes; } }
         public IJavascriptObject JSValue { get; private set; }
@@ -73,27 +75,44 @@ namespace MVVM.HTML.Core.HTMLBinding
             _Attributes[propertyName] = glue;
         }
 
-        public void Reroot(string propertyName, IJSCSGlue newValue)
-        { 
-            UpdateCSharpProperty(propertyName, newValue);
+        public void Listen()
+        {
+            var notifier = GetObservable();
+            if (notifier != null)
+                notifier.PropertyChanged += CSharpPropertyChanged;
+        }
 
-#region Knockout
-            IJavascriptObject silenter;
-            if ( _Silenters.TryGetValue(propertyName,out silenter))
-            {
-                silenter.InvokeAsync("silent", _WebView, newValue.GetJSSessionValue());      
-            }
-            else
-            {
-                _WebView.RunAsync( ()=>
-                    {
-                        silenter = _Silenters.FindOrCreateEntity(propertyName, name => 
-                            _MappedJSValue.GetValue(name));
+        public void UnListen()
+        {
+            var notifier = GetObservable();
+            if (notifier != null)
+                notifier.PropertyChanged -= CSharpPropertyChanged;
+        }
 
-                        silenter.Invoke("silent", _WebView, newValue.GetJSSessionValue());
-                    });
-            }
-#endregion
-        }     
+        private INotifyPropertyChanged GetObservable()
+        {
+            return CValue as INotifyPropertyChanged;  
+        }
+
+        private async void CSharpPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            var pn = e.PropertyName;
+            var propertyAccessor = new PropertyAccessor(sender, pn);
+            if (!propertyAccessor.IsGettable)
+                return;
+
+            var nv = propertyAccessor.Get();
+            var currentChild = Attributes[pn];
+
+            if (Object.Equals(nv, currentChild.CValue))
+                return;
+
+            var newbridgedchild = _JSObjectBuilder.Map(nv);
+            await RegisterAndDo(newbridgedchild, () =>
+            {
+                currentfather.UpdateCSharpProperty(pn, newbridgedchild);
+                _sessionInjector.UpdateProperty(currentfather.GetJSSessionValue(), pn, newbridgedchild.GetJSSessionValue());
+            });
+        }
     }
 }

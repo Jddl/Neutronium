@@ -11,9 +11,11 @@ namespace MVVM.HTML.Core.HTMLBinding
 {
     internal class KnockoutSessionInjector : IJavascriptSessionInjector
     {
-        private readonly IWebView _IWebView;
+        private readonly IWebView _WebView;
         private readonly IJavascriptChangesObserver _IJavascriptListener;
         private readonly Queue<IJavascriptObjectMapper> _IJavascriptMapper = new Queue<IJavascriptObjectMapper>();
+        private readonly IDictionary<IJavascriptObject, IDictionary<string, IJavascriptObject>>
+                            _Silenters = new Dictionary<IJavascriptObject, IDictionary<string, IJavascriptObject>>();
         private IJavascriptObject _Listener;
         private IJavascriptObjectMapper _Current;
         private IJavascriptObject _Mapper;
@@ -21,19 +23,32 @@ namespace MVVM.HTML.Core.HTMLBinding
 
         internal KnockoutSessionInjector(IWebView iWebView, IJavascriptChangesObserver iJavascriptListener)
         {
-            _IWebView = iWebView;
+            _WebView = iWebView;
             _IJavascriptListener = iJavascriptListener;
 
-            _IWebView.Run(() =>
+            _WebView.Run(() =>
                 {
-                    _Listener = _IWebView.Factory.CreateObject(false);
+                    _Listener = _WebView.Factory.CreateObject(false);
 
-                    if (_IJavascriptListener != null)
-                    {
-                        _Listener.Bind("TrackChanges", _IWebView, (e) => _IJavascriptListener.OnJavaScriptObjectChanges(e[0], e[1].GetStringValue(), e[2]));
-                        _Listener.Bind("TrackCollectionChanges", _IWebView, JavascriptColectionChanged);
-                    }
+                    if (_IJavascriptListener == null)
+                        return;
+
+                    _Listener.Bind("TrackChanges", _WebView, (e) => _IJavascriptListener.OnJavaScriptObjectChanges(e[0], e[1].GetStringValue(), e[2]));
+                    _Listener.Bind("TrackCollectionChanges", _WebView, JavascriptColectionChanged);
                 });
+        }
+
+        public void Dispose()
+        {
+            _Silenters.Clear();
+            _WebView.Run(() =>
+            {
+                if (_Listener == null)
+                    return;
+
+                _Listener.Dispose();
+                _Listener = null;
+            });
         }
 
         private void JavascriptColectionChanged(IJavascriptObject[] arguments)
@@ -45,23 +60,23 @@ namespace MVVM.HTML.Core.HTMLBinding
                                             (v, t, i) => new IndividualJavascriptCollectionChange(
                                                 t.GetStringValue() == "added" ? CollectionChangeType.Add : CollectionChangeType.Remove,
                                                 i.GetIntValue(), v)));
-       
+
             _IJavascriptListener.OnJavaScriptCollectionChanges(collectionChange);
         }
 
         private IJavascriptObject GetMapper(IJavascriptObjectMapper iMapperListener)
         {
             _IJavascriptMapper.Enqueue(iMapperListener);
-    
+
             if (_Mapper != null)
                 return _Mapper;
 
-            _Mapper = _IWebView.Factory.CreateObject(false);
+            _Mapper = _WebView.Factory.CreateObject(false);
 
-            _Mapper.Bind("Register", _IWebView, (e) =>
+            _Mapper.Bind("Register", _WebView, (e) =>
             {
                 if (_PullNextMapper)
-                { 
+                {
                     _Current = _IJavascriptMapper.Dequeue();
                     _PullNextMapper = false;
                 }
@@ -86,14 +101,14 @@ namespace MVVM.HTML.Core.HTMLBinding
                         _Current.MapCollection(e[1], e[2].GetStringValue(), e[3].GetIntValue(), registered);
                         break;
                 }
-             });
+            });
 
-            _Mapper.Bind("End", _IWebView, (e) =>
+            _Mapper.Bind("End", _WebView, (e) =>
                 {
                     if (_PullNextMapper)
                         _Current = _IJavascriptMapper.Dequeue();
 
-                    if (_Current!=null)
+                    if (_Current != null)
                         _Current.EndMapping(e[0]);
                     _Current = null;
                     _PullNextMapper = true;
@@ -107,8 +122,8 @@ namespace MVVM.HTML.Core.HTMLBinding
         {
             if (_Ko == null)
             {
-                _Ko = _IWebView.GetGlobal().GetValue("ko");
-                if ((_Ko==null) || (!_Ko.IsObject))
+                _Ko = _WebView.GetGlobal().GetValue("ko");
+                if ((_Ko == null) || (!_Ko.IsObject))
                     throw ExceptionHelper.NoKo();
             }
 
@@ -117,9 +132,9 @@ namespace MVVM.HTML.Core.HTMLBinding
 
         public IJavascriptObject Inject(IJavascriptObject ihybridobject, IJavascriptObjectMapper ijvm)
         {
-            return _IWebView.Evaluate(() =>
+            return _WebView.Evaluate(() =>
                 {
-                    return GetKo().Invoke("MapToObservable", _IWebView, ihybridobject, GetMapper(ijvm), _Listener);
+                    return GetKo().Invoke("MapToObservable", _WebView, ihybridobject, GetMapper(ijvm), _Listener);
                 });
         }
 
@@ -127,24 +142,45 @@ namespace MVVM.HTML.Core.HTMLBinding
         {
             var ko = GetKo();
 
-            return _IWebView.RunAsync(() =>
+            return _WebView.RunAsync(() =>
                 {
-                    ko.Bind("log", _IWebView, (e) => ExceptionHelper.Log(string.Join(" - ", e.Select(s => (s.GetStringValue().Replace("\n", " "))))));
-                    ko.Invoke("register", _IWebView, iJSObject);
-                    ko.Invoke("applyBindings", _IWebView, iJSObject);
+                    ko.Bind("log", _WebView, (e) => ExceptionHelper.Log(string.Join(" - ", e.Select(s => (s.GetStringValue().Replace("\n", " "))))));
+                    ko.Invoke("register", _WebView, iJSObject);
+                    ko.Invoke("applyBindings", _WebView, iJSObject);
                 });
         }
 
-        public void Dispose()
+        public void UpdateProperty(IJavascriptObject father, string propertyName, IJavascriptObject value)
         {
-            _IWebView.Run(() =>
+            var silenter = GetSilenter(father, propertyName);
+            if (silenter != null)
             {
-                if (_Listener == null)
-                    return;
+                Silent(silenter, value);
+                return;
+            }
 
-                _Listener.Dispose();
-                _Listener = null;
+            _WebView.RunAsync(() =>
+            {
+                silenter = GetOrCreateSilenter(father, propertyName);
+                Silent(silenter, value);
             });
+        }
+
+        private IJavascriptObject GetSilenter(IJavascriptObject father, string propertyName)
+        {
+            var dic = _Silenters.GetOrDefault(father);
+            return (dic == null) ? null : dic.GetOrDefault(propertyName);
+        }
+
+        private IJavascriptObject GetOrCreateSilenter(IJavascriptObject father, string propertyName)
+        {
+            var dic = _Silenters.FindOrCreateEntity(father, _ => new Dictionary<string, IJavascriptObject>());
+            return dic.FindOrCreateEntity(propertyName, name => father.GetValue(name));
+        }
+
+        private void Silent(IJavascriptObject silenter, IJavascriptObject value)
+        {
+            silenter.Invoke("silent", _WebView, value);
         }
     }
 }

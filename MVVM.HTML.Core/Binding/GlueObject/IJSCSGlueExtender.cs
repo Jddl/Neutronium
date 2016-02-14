@@ -1,10 +1,12 @@
-﻿using MVVM.HTML.Core.Binding.Listeners;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using MVVM.HTML.Core.JavascriptEngine.JavascriptObject;
+using MVVM.HTML.Core.Binding.Listeners;
+using MVVM.HTML.Core.Infra;
 
 namespace MVVM.HTML.Core.HTMLBinding
 {
@@ -35,6 +37,11 @@ namespace MVVM.HTML.Core.HTMLBinding
         {
             IJSObservableBridge inj = @this as IJSObservableBridge;
             return (inj!=null) ?  inj.MappedJSValue : @this.JSValue;    
+        }
+
+        public static void VisitListeners(this IJSCSGlue @this, Action<IListener> onListener)
+        {
+            @this.GetAllChildren(true).OfType<IListener>().Distinct().ForEach(onListener);
         }
 
         public static void ApplyOnListenable(this IJSCSGlue @this, IListenableObjectVisitor ivisitor)

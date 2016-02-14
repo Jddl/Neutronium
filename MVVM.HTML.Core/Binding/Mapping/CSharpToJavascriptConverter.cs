@@ -84,7 +84,7 @@ namespace MVVM.HTML.Core.HTMLBinding
             if (from == null)
                 return;
 
-            IEnumerable<PropertyInfo> propertyInfos = from.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            var propertyInfos = from.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
             foreach (PropertyInfo propertyInfo in propertyInfos.Where(p => p.CanRead))
             {

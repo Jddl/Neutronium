@@ -8,10 +8,11 @@ using MVVM.HTML.Core.Binding.Extension;
 using MVVM.HTML.Core.Window;
 using MVVM.HTML.Core.Binding.Mapping;
 using MVVM.HTML.Core.JavascriptEngine.JavascriptObject;
+using MVVM.HTML.Core.Binding.Listeners;
 
 namespace MVVM.HTML.Core.HTMLBinding
 {
-    public class JSCommand : GlueBase, IJSObservableBridge
+    public class JSCommand : GlueBase, IJSObservableBridge, IListener
     {
         private readonly IWebView _WebView;
         private readonly IDispatcher _UIDispatcher;
@@ -61,13 +62,24 @@ namespace MVVM.HTML.Core.HTMLBinding
         private void _Command_CanExecuteChanged(object sender, EventArgs e)
         {
             _Count = (_Count == 1) ? 2 : 1;
-#region Knockout
             _WebView.RunAsync(() =>
             {
-                _MappedJSValue.Invoke("CanExecuteCount", _WebView, _WebView.Factory.CreateInt(_Count));
+                UpdateProperty("CanExecuteCount", (f) => f.CreateInt(_Count));
             });
-#endregion
         }
+
+        private void CanExecuteCommand(IJavascriptObject[] e)
+        {
+            bool res = _Command.CanExecute(_JavascriptToCSharpConverter.GetFirstArgumentOrNull(e));
+            UpdateProperty("CanExecuteValue", (f) => f.CreateBool(res));
+        }
+
+#region Knockout
+        private void UpdateProperty(string propertyName, Func<IJavascriptObjectFactory,IJavascriptObject> factory)
+        {
+            _MappedJSValue.Invoke(propertyName, _WebView, factory(_WebView.Factory));
+        }
+#endregion
 
         public void SetMappedJSValue(IJavascriptObject ijsobject)
         {
@@ -81,14 +93,6 @@ namespace MVVM.HTML.Core.HTMLBinding
             _UIDispatcher.RunAsync(() => _Command.Execute(_JavascriptToCSharpConverter.GetFirstArgumentOrNull(e)));
         }
 
-        private void CanExecuteCommand(IJavascriptObject[] e)
-        {
-            bool res = _Command.CanExecute(_JavascriptToCSharpConverter.GetFirstArgumentOrNull(e));
-#region Knockout
-            _MappedJSValue.Invoke("CanExecuteValue", _WebView, _WebView.Factory.CreateBool(res));
-#endregion
-        }
-
         public IEnumerable<IJSCSGlue> GetChildren()
         {
             return Enumerable.Empty<IJSCSGlue>();
@@ -97,6 +101,16 @@ namespace MVVM.HTML.Core.HTMLBinding
         protected override void ComputeString(StringBuilder sb, HashSet<IJSCSGlue> alreadyComputed)
         {
             sb.Append("{}");
+        }
+
+        public void Listen()
+        {
+            this.ListenChanges();
+        }
+
+        public void UnListen()
+        {
+            this.UnListenChanges();
         }
     }
 }

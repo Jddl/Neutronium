@@ -187,7 +187,11 @@ namespace MVVM.HTML.Core.HTMLBinding
                 return;
 
             var newbridgedchild = _JSObjectBuilder.Map(nv);
-            await RegisterAndDo(newbridgedchild, () => currentfather.Reroot(pn, newbridgedchild));
+            await RegisterAndDo(newbridgedchild, () =>
+                {
+                    currentfather.UpdateCSharpProperty(pn, newbridgedchild);
+                    _sessionInjector.UpdateProperty(currentfather.GetJSSessionValue(), pn, newbridgedchild.GetJSSessionValue());
+                });
         }
 
         private async void CSharpCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
